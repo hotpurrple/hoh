@@ -65,7 +65,7 @@ class VoiceForegroundService : Service() {
         // Same fixed vocabulary as the Windows version: "next"/"back" plus a couple of
         // synonyms, and a catch-all "[unk]" bucket for everything else (kept out-of-grammar
         // words from ever being force-matched onto next/back).
-        private val GRAMMAR = """["next", "forward", "back", "previous", "go back", "[unk]"]"""
+        private val GRAMMAR = """["next", "previous", "[unk]"]"""
 
         // Ignore anything else for a short window after firing a command - stops the tail end
         // of "next" from producing a spurious second match a moment later. Deliberately not a
