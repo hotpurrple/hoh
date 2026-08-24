@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  KOReader's HTTP inspector plugin only speaks plain HTTP on your local network - there's no
+  HTTPS option, and there doesn't need to be (it never leaves your LAN). Android blocks
+  cleartext traffic by default since API 28, so this opts back in. Scoped to cleartext only
+  (not weakening cert validation or anything else) - fine for a same-network device you
+  configure yourself.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

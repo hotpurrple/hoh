@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple page + sound-wave glyph -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,24 L64,24 L74,34 L74,84 L34,84 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2" />
+    <path
+        android:fillColor="#2E5C8A"
+        android:pathData="M64,24 L64,34 L74,34 Z" />
+    <path
+        android:strokeColor="#2E5C8A"
+        android:strokeWidth="3"
+        android:pathData="M42,46 L66,46" />
+    <path
+        android:strokeColor="#2E5C8A"
+        android:strokeWidth="3"
+        android:pathData="M42,56 L66,56" />
+    <path
+        android:strokeColor="#2E5C8A"
+        android:strokeWidth="3"
+        android:pathData="M42,66 L58,66" />
+</vector>
