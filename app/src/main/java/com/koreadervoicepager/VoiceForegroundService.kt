@@ -237,11 +237,11 @@ class VoiceForegroundService : Service() {
                 // only shows up after several hundred ms of trailing silence, way more than
                 // a two-word command needs. The partial hypothesis usually locks onto
                 // "next"/"back" almost as soon as the word finishes, so act on it directly.
-                handleRecognized(extractField(rec.partialResult, "partial"))
+                handleRecognized(extractField(rec.partialResult, "partial"), rec.partialResult)
             } else {
                 // Finalized result - fallback for a quiet/borderline utterance that never
                 // stabilized into a clean partial match above.
-                handleRecognized(extractField(rec.result, "text"))
+                handleRecognized(extractField(rec.result, "text"), rec.result)
             }
         }
     }
@@ -253,8 +253,26 @@ class VoiceForegroundService : Service() {
         null
     }
 
+    private fun extractConfidence(json: String?): Float {
+    if (json.isNullOrBlank()) return 0f
+    return try {
+        val obj = JSONObject(json)
+        // partial results have a "partial" field; final results have a "result" array with per-word confidence
+        val arr = obj.optJSONArray("result") ?: return 1f // no array = partial, let threshold logic handle via text match
+        var min = 1f
+        for (i in 0 until arr.length()) {
+            val conf = arr.getJSONObject(i).optDouble("conf", 0.0).toFloat()
+            if (conf < min) min = conf
+        }
+        min
+    } catch (e: Exception) {
+        0f
+    }
+}
+
     private fun handleRecognized(text: String?) {
         if (text.isNullOrBlank()) return
+        if (extractConfidence(json) < 0.80f) return
         val now = System.currentTimeMillis()
         if (now < cooldownUntil) return
 
