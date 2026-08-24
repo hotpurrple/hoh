@@ -8,7 +8,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.koreadervoicepager"
+        applicationId = "com.koreadervoicepager.cld"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
