@@ -87,7 +87,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Choose model .zip..." />
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:text="Use a different model…" />
 
         <TextView
             android:layout_width="wrap_content"

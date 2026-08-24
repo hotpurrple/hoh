@@ -48,6 +48,9 @@ class AppConfig(context: Context) {
 
     fun modelUnpackDir(): File = File(appContext.filesDir, "vosk-model")
 
+    /** Where the bundled (assets-baked) model is extracted to on first launch. */
+    fun bundledModelDir(): File = File(appContext.filesDir, "vosk-model-bundled")
+
     companion object {
         private const val KEY_HOST = "host"
         private const val KEY_PORT = "port"

@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -21,12 +22,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * There's no tray on Android, so this activity is both the always-available "Settings" dialog
- * and the on/off switch the notification's tap target opens back into. All it really does is
- * persist AppConfig and start/stop VoiceForegroundService - the actual listening logic all
- * lives in the service so it keeps running after this activity is closed/backgrounded.
- */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
@@ -52,7 +47,7 @@ class MainActivity : AppCompatActivity() {
 
     private val pickModelZip = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
-    ) { uri -> if (uri != null) installModel(uri) }
+    ) { uri -> if (uri != null) installUserModel(uri) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,10 +73,66 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // First run: no model configured yet, same "Settings pops open automatically" behavior
-        // as the Windows version's fresh-install flow.
-        if (!config.isModelReady()) {
-            binding.statusText.text = "Setup needed: pick a speech model below, then Start."
+        // Extract the bundled model on first launch (no-op if already done).
+        ensureBundledModel()
+    }
+
+    /**
+     * Extracts the model baked into assets on first launch. Once done it auto-starts.
+     * If the user has already picked their own model (voskModelPath is set and valid),
+     * we skip extraction entirely and leave their choice untouched.
+     */
+    private fun ensureBundledModel() {
+        // User has a custom model already — leave it alone.
+        if (config.isModelReady()) return
+
+        val bundledDir = config.bundledModelDir()
+        if (bundledDir.exists() && bundledDir.resolve("conf").exists()) {
+            // Already extracted on a previous launch.
+            config.voskModelPath = bundledDir.absolutePath
+            updateModelUi()
+            return
+        }
+
+        // Check if the bundled assets actually exist (they do in the CI build; won't in a
+        // local build where the dev didn't run the download step).
+        val hasBundled = try { assets.list("vosk-model")?.isNotEmpty() == true } catch (e: Exception) { false }
+        if (!hasBundled) {
+            binding.modelPathText.text = "No bundled model — pick a model .zip below."
+            return
+        }
+
+        binding.modelPathText.text = "Preparing speech model…"
+        binding.startStopButton.isEnabled = false
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                ModelInstaller.extractBundled(this@MainActivity, bundledDir)
+            }
+            binding.startStopButton.isEnabled = true
+            result.onSuccess {
+                config.voskModelPath = bundledDir.absolutePath
+                updateModelUi()
+                // Auto-start right after extraction on first run.
+                if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO)
+                    == PackageManager.PERMISSION_GRANTED
+                ) {
+                    startService()
+                } else {
+                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            }.onFailure { e ->
+                binding.modelPathText.text = "Model extraction failed — pick one manually below."
+                Toast.makeText(this@MainActivity, e.message ?: "Extraction failed.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun updateModelUi() {
+        if (config.isModelReady()) {
+            val isBundled = config.voskModelPath == config.bundledModelDir().absolutePath
+            binding.modelPathText.text = if (isBundled) "Built-in model ready ✓" else "Custom model ready ✓"
+        } else {
+            binding.modelPathText.text = "No model installed yet"
         }
     }
 
@@ -104,8 +155,7 @@ class MainActivity : AppCompatActivity() {
     private fun loadConfigIntoUi() {
         binding.hostInput.setText(config.host)
         binding.portInput.setText(config.port.toString())
-        binding.modelPathText.text =
-            if (config.isModelReady()) "Model ready: ${config.voskModelPath}" else "No model installed yet"
+        updateModelUi()
         binding.chunkSlider.value = config.chunkMs.toFloat()
         binding.chunkLabel.text = "${config.chunkMs} ms"
         binding.chunkSlider.addOnChangeListener { _, value, _ ->
@@ -129,14 +179,12 @@ class MainActivity : AppCompatActivity() {
 
         Toast.makeText(this, "Saved.", Toast.LENGTH_SHORT).show()
 
-        // If the service is already running, push the new settings into it immediately rather
-        // than requiring a manual stop/start - same as the Windows Settings dialog closing.
         val intent = Intent(this, VoiceForegroundService::class.java)
         startService(intent)
     }
 
-    private fun installModel(uri: Uri) {
-        binding.modelPathText.text = "Installing model..."
+    private fun installUserModel(uri: Uri) {
+        binding.modelPathText.text = "Installing model…"
         binding.pickModelButton.isEnabled = false
         lifecycleScope.launch {
             val dest = config.modelUnpackDir()
@@ -144,10 +192,10 @@ class MainActivity : AppCompatActivity() {
             binding.pickModelButton.isEnabled = true
             result.onSuccess {
                 config.voskModelPath = dest.absolutePath
-                binding.modelPathText.text = "Model ready: ${dest.absolutePath}"
+                updateModelUi()
                 Toast.makeText(this@MainActivity, "Model installed.", Toast.LENGTH_SHORT).show()
             }.onFailure { e ->
-                binding.modelPathText.text = "No model installed yet"
+                updateModelUi()
                 Toast.makeText(this@MainActivity, e.message ?: "Couldn't install that model.", Toast.LENGTH_LONG).show()
             }
         }
@@ -155,7 +203,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun toggleService() {
         if (!config.isModelReady()) {
-            Toast.makeText(this, "Pick a speech model first.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Model not ready yet — wait a moment or pick a model zip.", Toast.LENGTH_SHORT).show()
             return
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
@@ -174,7 +222,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun testConnection() {
-        binding.statusText.text = "Testing connection..."
+        binding.statusText.text = "Testing connection…"
         val intent = Intent(this, VoiceForegroundService::class.java)
         ContextCompat.startForegroundService(this, intent)
     }

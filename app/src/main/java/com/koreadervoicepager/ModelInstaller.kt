@@ -6,18 +6,12 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
 
-/**
- * Improvement over the Windows version: instead of asking the user to manually unzip the Vosk
- * model somewhere on disk and browse to the folder (awkward on Android's scoped storage),
- * the user just picks the model .zip via the system file picker and this unpacks it straight
- * into app-private storage. Runs on a background thread - call from Dispatchers.IO.
- */
 object ModelInstaller {
 
     /**
-     * Unzips [zipUri] into [destDir], replacing any previous contents. Some Vosk model zips
-     * wrap everything in a single top-level folder (e.g. "vosk-model-small-en-us-0.15/") -
-     * detected and stripped so [destDir] ends up directly containing "am", "conf", "graph", etc.
+     * Unzips a user-picked [zipUri] into [destDir], replacing any previous contents.
+     * Strips a single top-level wrapper folder if present so destDir ends up directly
+     * containing "am", "conf", "graph", etc. as Vosk expects.
      */
     fun install(context: Context, zipUri: Uri, destDir: File): Result<Unit> {
         return try {
@@ -34,7 +28,6 @@ object ModelInstaller {
                     var entry = zip.nextEntry
                     while (entry != null) {
                         val outFile = File(tempDir, entry.name)
-                        // Zip-slip guard: refuse entries that would escape tempDir.
                         if (!outFile.canonicalPath.startsWith(tempDir.canonicalPath + File.separator)) {
                             entry = zip.nextEntry
                             continue
@@ -51,8 +44,6 @@ object ModelInstaller {
                 }
             } ?: return Result.failure(IllegalStateException("Couldn't open the selected file."))
 
-            // If everything landed inside one top-level directory, use that as the real root
-            // so destDir directly contains "am"/"conf"/"graph" the way Vosk expects.
             val topLevel = tempDir.listFiles() ?: emptyArray()
             val sourceRoot = if (topLevel.size == 1 && topLevel[0].isDirectory) topLevel[0] else tempDir
 
@@ -60,8 +51,7 @@ object ModelInstaller {
                 tempDir.deleteRecursively()
                 return Result.failure(IllegalStateException(
                     "That doesn't look like a Vosk model zip (no \"conf\" folder found inside). " +
-                    "Download one from https://alphacephei.com/vosk/models, e.g. " +
-                    "vosk-model-small-en-us-0.15.zip, and pick that file directly."
+                    "Download one from https://alphacephei.com/vosk/models"
                 ))
             }
 
@@ -70,6 +60,46 @@ object ModelInstaller {
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Extracts the bundled model from assets/vosk-model/ into [destDir] if it isn't already
+     * there. This runs once on first launch; subsequent launches skip it (destDir exists).
+     * The assets folder is pre-populated by the GitHub Actions build step.
+     */
+    fun extractBundled(context: Context, destDir: File): Result<Unit> {
+        if (File(destDir, "conf").exists()) return Result.success(Unit) // already done
+
+        return try {
+            if (destDir.exists()) destDir.deleteRecursively()
+            destDir.mkdirs()
+
+            val assetManager = context.assets
+            copyAssetDir(assetManager, "vosk-model", destDir)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun copyAssetDir(
+        assets: android.content.res.AssetManager,
+        assetPath: String,
+        destDir: File
+    ) {
+        val children = assets.list(assetPath) ?: return
+        if (children.isEmpty()) {
+            // It's a file
+            assets.open(assetPath).use { input ->
+                FileOutputStream(destDir).use { out -> input.copyTo(out) }
+            }
+        } else {
+            // It's a directory
+            destDir.mkdirs()
+            for (child in children) {
+                copyAssetDir(assets, "$assetPath/$child", File(destDir, child))
+            }
         }
     }
 }
