@@ -270,7 +270,7 @@ class VoiceForegroundService : Service() {
     }
 }
 
-    private fun handleRecognized(text: String?) {
+    private fun handleRecognized(text: String?, json: String?) {
         if (text.isNullOrBlank()) return
         if (extractConfidence(json) < 0.80f) return
         val now = System.currentTimeMillis()
